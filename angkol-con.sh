@@ -244,7 +244,7 @@ deploy_new_service() {
     echo -e "\n${CYAN}=========================================${NC}"
     echo -e "${GREEN} RESOURCE CONFIG MODE${NC}"
     echo -e "${CYAN}=========================================${NC}"
-    echo -e "${GREEN}1) AUTO PRESETS | Recommended (Instance-Based)${NC}"
+    echo -e "${GREEN}1) AUTO PRESETS | Recommended (Request-Based)${NC}"
     echo -e "${YELLOW}2) MANUAL SETUP | Full Memory & vCPU Range${NC}"
 
     while true; do
@@ -252,35 +252,32 @@ deploy_new_service() {
         case $RES_MODE in
             1)
                 echo -e "\n${CYAN}--- AUTO PRESETS ---${NC}"
-                echo "1) Basic: 1Gi RAM + 1 vCPU (Min: 1, Max: 3, Concurrency: 100)"
-                echo "2) Balanced: 2Gi RAM + 2 vCPU (Min: 1, Max: 5, Concurrency: 130) ✅"
-                echo "3) Turbo: 4Gi RAM + 4 vCPU (Min: 1, Max: 4, Concurrency: 200)"
+                echo "1) Basic: 512Mi RAM + 1 vCPU (Min: 0, Max: 1, Concurrency: 1000)"
+                echo "2) Balanced: 1Gi RAM + 1 vCPU (Min: 0, Max: 1, Concurrency: 1000) ✅"
+                echo "3) Turbo: 2Gi RAM + 2 vCPU (Min: 0, Max: 1, Concurrency: 1000)"
                 read -p "Choose preset [1-3]: " AUTO_CHOICE
-                BILLING_MODE="instance"
-                BILLING_FLAG="--no-cpu-throttling"
+                BILLING_MODE="request"
+                BILLING_FLAG="--cpu-throttling"
+                MIN_INST=0
+                MAX_INST=1
+                CONCURRENCY=1000
+                TIMEOUT=1000
                 case $AUTO_CHOICE in
-                    1) MEMORY="1Gi"; CPU="1"; MIN_INST=1; MAX_INST=3; CONCURRENCY=100; TIMEOUT=3600 ;;
-                    2) MEMORY="2Gi"; CPU="2"; MIN_INST=1; MAX_INST=5; CONCURRENCY=130; TIMEOUT=3600 ;;
-                    3) MEMORY="4Gi"; CPU="4"; MIN_INST=1; MAX_INST=4; CONCURRENCY=200; TIMEOUT=3600 ;;
-                    *) MEMORY="2Gi"; CPU="2"; MIN_INST=1; MAX_INST=5; CONCURRENCY=130; TIMEOUT=3600; echo -e "${YELLOW}Using Balanced preset${NC}" ;;
+                    1) MEMORY="512Mi"; CPU="1" ;;
+                    2) MEMORY="1Gi"; CPU="1" ;;
+                    3) MEMORY="2Gi"; CPU="2" ;;
+                    *) MEMORY="1Gi"; CPU="1"; echo -e "${YELLOW}Using Balanced preset${NC}" ;;
                 esac
-                echo -e "${GREEN}✅ Applied Preset: $MEMORY | $CPU vCPU | Min: $MIN_INST | Max: $MAX_INST | Concurrency: $CONCURRENCY${NC}"
+                echo -e "${GREEN}✅ Applied Preset: $MEMORY | $CPU vCPU | Min: $MIN_INST | Max: $MAX_INST | Concurrency: $CONCURRENCY | Timeout: ${TIMEOUT}s${NC}"
                 break
                 ;;
             2)
                 echo -e "\n${CYAN}=========================================${NC}"
                 echo -e "${GREEN} BILLING MODE${NC}"
                 echo -e "${CYAN}=========================================${NC}"
-                echo -e "${YELLOW}Instance-Based = Stable, No Throttling${NC}"
-                echo "1) Request-Based | 2) Instance-Based"
-                while true; do
-                    read -p "Select [1-2]: " BILLING_CHOICE
-                    case $BILLING_CHOICE in
-                        1) BILLING_MODE="request"; BILLING_FLAG="--cpu-throttling"; break ;;
-                        2) BILLING_MODE="instance"; BILLING_FLAG="--no-cpu-throttling"; break ;;
-                        *) echo -e "${RED}Enter 1 or 2 only${NC}" ;;
-                    esac
-                done
+                echo -e "${YELLOW}Request-Based with CPU Throttling${NC}"
+                BILLING_MODE="request"
+                BILLING_FLAG="--cpu-throttling"
 
                 echo -e "\n${YELLOW}--- MANUAL SETUP ---${NC}"
                 echo "Select Memory:"
@@ -318,7 +315,7 @@ deploy_new_service() {
                 read -p "Min Instances [Default: 0]: " MIN_INST; MIN_INST=${MIN_INST:-0}
                 read -p "Max Instances [Default: 1]: " MAX_INST; MAX_INST=${MAX_INST:-1}
                 read -p "Concurrency / Max Connections [Default: 1000]: " CONCURRENCY; CONCURRENCY=${CONCURRENCY:-1000}
-                read -p "Timeout in seconds [Default: 3600]: " TIMEOUT; TIMEOUT=${TIMEOUT:-3600}
+                read -p "Timeout in seconds [Default: 1000]: " TIMEOUT; TIMEOUT=${TIMEOUT:-1000}
                 echo -e "${GREEN}✅ Config Set: Min: $MIN_INST | Max: $MAX_INST | Concurrency: $CONCURRENCY | Timeout: ${TIMEOUT}s${NC}"
                 break
                 ;;
@@ -876,7 +873,7 @@ EOF
         --project="$PROJECT_ID" --platform managed --region "$REGION" --allow-unauthenticated \
         --port 8080 --memory "$MEMORY" --cpu "$CPU" --concurrency "$CONCURRENCY" \
         --timeout "$TIMEOUT" --min-instances "$MIN_INST" --max-instances "$MAX_INST" \
-        --execution-environment gen2 --cpu-boost --quiet
+        $BILLING_FLAG --cpu-boost --quiet
 
     CLOUD_RUN_URL=$(gcloud run services describe "$CLOUD_RUN_SERVICE_NAME" --project="$PROJECT_ID" --region="$REGION" --format='value(status.url)')
     DOMAIN=$(echo "$CLOUD_RUN_URL" | sed 's|https://||')
@@ -1037,10 +1034,7 @@ EOF
     echo -e "${CYAN}=========================================${NC}"
     echo -e "${GREEN}🛡️ ENHANCEMENTS APPLIED:${NC}"
     echo -e " ✅ Custom User-Agent Header Preserved"
-    echo -e " ✅ Artifact Registry Auto-Setup ✨ NEW"
     echo -e " ✅ Fixed 400 Bad Request (Forwarded Host & Headers)"
-    echo -e " ✅ Bypassed Restricted Host Kernel/Sysctl Modifications"
-    echo -e " ✅ RAM Disk (tmpfs) High-Speed Mounts"
     echo -e " ✅ Domain & TLS Masking Engine (Fake Server Fingerprint)"
     echo -e " ✅ Anti-DDoS & Container Limits Compliance"
     echo -e " ✅ Log Cleaner & Supervisord Integration"
