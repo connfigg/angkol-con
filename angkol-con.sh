@@ -4,9 +4,9 @@ set -euo pipefail
 # 🚀 GCP-XRAY MULTI-ENGINE DEPLOYER — WS-ONLY EDITION
 # ✅ ENGINES: OPENRESTY, ENVOY, HAPROXY, CADDY, SING-BOX
 # ✅ INCLUDES CUSTOM USER-AGENT HEADERS & DIRECT PANEL
-# ✅ UPDATE: Artifact Registry Support (Auto-Create Repo)
-# ✅ FIXED: Invalid image tag output & clean stderr logging
-# ✅ NEW: Interactive Decoy Panel with Direct NetMod Config Copy
+# ✅ UPDATE: Artifact Registry Support + Auto-Cleanup Old Images
+# ✅ NEW: True Anti-DDoS Rate Limiting on All 5 Engines
+# ✅ NEW: Back Navigation on Menus, Presets & Manual Modes
 # =========================================
 GREEN='\033[1;32m'
 RED='\033[1;31m'
@@ -27,27 +27,7 @@ if ! command -v jq &> /dev/null; then
 fi
 
 # ==============================================
-# SKILLS & QWIKLABS SAFE STUB (BYPASSED KERNEL MODS)
-# ==============================================
-sysctl_optimize() {
-    echo -e "\n${CYAN}⚙️ Bypassing restricted host sysctl modifications for cloud environment stability...${NC}"
-}
-
-setup_log_cleaner() {
-    echo -e "${CYAN}🧹 Skipping restricted cron setup for cloud environment stability...${NC}"
-}
-
-# ==============================================
-# SUPERVISORD — Process Manager
-# ==============================================
-install_supervisord() {
-    echo -e "${CYAN}📦 Installing Supervisord...${NC}"
-    sudo apt update -qq && sudo apt install -y -qq supervisor || true
-    sudo systemctl enable supervisor >/dev/null 2>&1 || true
-}
-
-# ==============================================
-# ✅ FULLY FIXED: ARTIFACT REGISTRY SETUP
+# ARTIFACT REGISTRY SETUP & AUTO-CLEANUP
 # ==============================================
 setup_artifact_registry() {
     local TARGET_REGION="$1"
@@ -72,6 +52,48 @@ setup_artifact_registry() {
     gcloud auth configure-docker "${TARGET_REGION}-docker.pkg.dev" --quiet
     
     ARTIFACT_REGISTRY_URL="${TARGET_REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}"
+}
+
+cleanup_old_artifact_images() {
+    local TARGET_REGION="$1"
+    local TARGET_PROJECT="$2"
+    local REPO_NAME="xray-images"
+    local PKG_PATH="${TARGET_REGION}-docker.pkg.dev/${TARGET_PROJECT}/${REPO_NAME}/gcp-project-${ENGINE}"
+
+    echo -e "\n${CYAN}🧹 Cleaning up old Artifact Registry images for gcp-project-${ENGINE}...${NC}"
+
+    ACTIVE_DIGEST=$(gcloud artifacts docker images describe "${PKG_PATH}:latest" \
+        --project="$TARGET_PROJECT" \
+        --format='value(image_summary.digest)' 2>/dev/null || true)
+
+    DIGESTS=$(gcloud artifacts docker images list "$PKG_PATH" \
+        --project="$TARGET_PROJECT" \
+        --format='value(digest)' 2>/dev/null || true)
+
+    if [ -z "$DIGESTS" ]; then
+        echo -e "${YELLOW}ℹ️ No images found to clean up.${NC}"
+        return 0
+    fi
+
+    local DELETED_COUNT=0
+    while IFS= read -r DIGEST; do
+        [ -z "$DIGEST" ] && continue
+        if [ -n "$ACTIVE_DIGEST" ] && [ "$DIGEST" = "$ACTIVE_DIGEST" ]; then
+            continue
+        fi
+        if gcloud artifacts docker images delete "${PKG_PATH}@${DIGEST}" \
+            --project="$TARGET_PROJECT" \
+            --delete-tags \
+            --quiet >/dev/null 2>&1; then
+            ((DELETED_COUNT++)) || true
+        fi
+    done <<< "$DIGESTS"
+
+    if [ "$DELETED_COUNT" -gt 0 ]; then
+        echo -e "${GREEN}✅ Removed $DELETED_COUNT old image version(s). Kept latest active digest.${NC}"
+    else
+        echo -e "${GREEN}✅ Artifact Registry is already clean (only active image kept).${NC}"
+    fi
 }
 
 # ==============================================
@@ -126,11 +148,11 @@ list_deployed_services() {
 
             MEMORY=$(echo "$DETAILS" | jq -r '.spec.template.spec.containers[0].resources.limits.memory // "1Gi"')
             CPU=$(echo "$DETAILS" | jq -r '.spec.template.spec.containers[0].resources.limits.cpu // "1"')
-            BILLING=$(echo "$DETAILS" | jq -r '.spec.template.spec.billingMode // "Instance Based"' | sed 's/_/ /g;s/^./\U&/')
+            BILLING=$(echo "$DETAILS" | jq -r '.spec.template.spec.billingMode // "Request Based"' | sed 's/_/ /g;s/^./\U&/')
             MIN_INST=$(echo "$DETAILS" | jq -r '.spec.template.spec.minInstances // "0"')
             MAX_INST=$(echo "$DETAILS" | jq -r '.spec.template.spec.maxInstances // "1"')
-            CONCURRENCY=$(echo "$DETAILS" | jq -r '.spec.template.spec.containerConcurrency // "300"')
-            TIMEOUT=$(echo "$DETAILS" | jq -r '.spec.template.spec.timeoutSeconds // "300"')
+            CONCURRENCY=$(echo "$DETAILS" | jq -r '.spec.template.spec.containerConcurrency // "1000"')
+            TIMEOUT=$(echo "$DETAILS" | jq -r '.spec.template.spec.timeoutSeconds // "1000"')
 
             echo -e "${GREEN}=== SERVICE #$COUNT ===${NC}"
             echo "🔹 Name: $NAME"
@@ -151,60 +173,65 @@ list_deployed_services() {
 }
 
 # ==============================================
-# REGION SELECTOR
+# REGION SELECTOR (WITH BACK OPTION)
 # ==============================================
 select_region() {
-    echo -e "\n=== GCP CLOUD RUN REGION SELECTION ==="
-    echo "--- North America ---"
-    echo "1) us-central1 (Iowa, US 🇺🇸)"
-    echo "2) us-east1 (South Carolina, US 🇺🇸)"
-    echo "3) us-east4 (N. Virginia, US 🇺🇸)"
-    echo "4) us-west1 (Oregon, US 🇺🇸)"
-    echo ""
-    echo "--- Asia Pacific ---"
-    echo "5) asia-east1 (Taiwan 🇹🇼 — RECOMMENDED!)"
-    echo "6) asia-southeast1 (Singapore 🇸🇬)"
-    echo "7) asia-northeast1 (Tokyo, Japan 🇯🇵)"
-    echo "8) asia-northeast3 (Seoul, South Korea 🇰🇷)"
-    echo "9) asia-south1 (Mumbai, India 🇮🇳)"
-    echo ""
-    echo "--- Europe ---"
-    echo "10) europe-west1 (Belgium 🇧🇪)"
-    echo "11) europe-west4 (Netherlands 🇳🇱)"
-    echo "12) europe-west9 (Paris, France 🇫🇷)"
-    echo ""
-    echo "0) Enter custom region code"
-    echo ""
+    while true; do
+        echo -e "\n=== GCP CLOUD RUN REGION SELECTION ==="
+        echo "--- North America ---"
+        echo "1) us-central1 (Iowa, US 🇺🇸)"
+        echo "2) us-east1 (South Carolina, US 🇺🇸)"
+        echo "3) us-east4 (N. Virginia, US 🇺🇸)"
+        echo "4) us-west1 (Oregon, US 🇺🇸)"
+        echo ""
+        echo "--- Asia Pacific ---"
+        echo "5) asia-east1 (Taiwan 🇹🇼 — RECOMMENDED!)"
+        echo "6) asia-southeast1 (Singapore 🇸🇬)"
+        echo "7) asia-northeast1 (Tokyo, Japan 🇯🇵)"
+        echo "8) asia-northeast3 (Seoul, South Korea 🇰🇷)"
+        echo "9) asia-south1 (Mumbai, India 🇮🇳)"
+        echo ""
+        echo "--- Europe ---"
+        echo "10) europe-west1 (Belgium 🇧🇪)"
+        echo "11) europe-west4 (Netherlands 🇳🇱)"
+        echo "12) europe-west9 (Paris, France 🇫🇷)"
+        echo ""
+        echo "99) Enter custom region code"
+        echo "0) Back to Main Menu"
+        echo ""
 
-    read -p "Enter region number: " REGION_NUM
-    case $REGION_NUM in
-        1) REGION="us-central1" ;;
-        2) REGION="us-east1" ;;
-        3) REGION="us-east4" ;;
-        4) REGION="us-west1" ;;
-        5) REGION="asia-east1" ;;
-        6) REGION="asia-southeast1" ;;
-        7) REGION="asia-northeast1" ;;
-        8) REGION="asia-northeast3" ;;
-        9) REGION="asia-south1" ;;
-        10) REGION="europe-west1" ;;
-        11) REGION="europe-west4" ;;
-        12) REGION="europe-west9" ;;
-        0) read -p "Type full region code: " REGION ;;
-        *) echo -e "${YELLOW}⚠️ Invalid! Using us-central1${NC}"; REGION="us-central1" ;;
-    esac
-    echo -e "${GREEN}✅ Selected Region:${NC} $REGION"
+        read -p "Enter region number: " REGION_NUM
+        case $REGION_NUM in
+            1) REGION="us-central1"; echo -e "${GREEN}✅ Selected Region:${NC} $REGION"; return 0 ;;
+            2) REGION="us-east1"; echo -e "${GREEN}✅ Selected Region:${NC} $REGION"; return 0 ;;
+            3) REGION="us-east4"; echo -e "${GREEN}✅ Selected Region:${NC} $REGION"; return 0 ;;
+            4) REGION="us-west1"; echo -e "${GREEN}✅ Selected Region:${NC} $REGION"; return 0 ;;
+            5) REGION="asia-east1"; echo -e "${GREEN}✅ Selected Region:${NC} $REGION"; return 0 ;;
+            6) REGION="asia-southeast1"; echo -e "${GREEN}✅ Selected Region:${NC} $REGION"; return 0 ;;
+            7) REGION="asia-northeast1"; echo -e "${GREEN}✅ Selected Region:${NC} $REGION"; return 0 ;;
+            8) REGION="asia-northeast3"; echo -e "${GREEN}✅ Selected Region:${NC} $REGION"; return 0 ;;
+            9) REGION="asia-south1"; echo -e "${GREEN}✅ Selected Region:${NC} $REGION"; return 0 ;;
+            10) REGION="europe-west1"; echo -e "${GREEN}✅ Selected Region:${NC} $REGION"; return 0 ;;
+            11) REGION="europe-west4"; echo -e "${GREEN}✅ Selected Region:${NC} $REGION"; return 0 ;;
+            12) REGION="europe-west9"; echo -e "${GREEN}✅ Selected Region:${NC} $REGION"; return 0 ;;
+            99)
+                read -p "Type full region code (or '0' to go back): " REGION
+                if [ "$REGION" = "0" ] || [ -z "$REGION" ]; then
+                    continue
+                fi
+                echo -e "${GREEN}✅ Selected Region:${NC} $REGION"
+                return 0
+                ;;
+            0) return 1 ;;
+            *) echo -e "${YELLOW}⚠️ Invalid choice! Try again or enter 0 to go back.${NC}" ;;
+        esac
+    done
 }
 
 # ==============================================
-# DEPLOYMENT FUNCTION
+# DEPLOYMENT FUNCTION (WITH STEP-BY-STEP BACK)
 # ==============================================
 deploy_new_service() {
-    sysctl_optimize
-    setup_log_cleaner
-    install_supervisord
-    select_region
-
     PROJECT_ID="$(gcloud config get-value project 2>/dev/null)"
     if [ -z "$PROJECT_ID" ]; then
         echo -e "${RED}❌ No project set! Run: gcloud config set project YOUR_ID${NC}"
@@ -214,24 +241,170 @@ deploy_new_service() {
 
     gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com --project="$PROJECT_ID" --quiet
 
-    echo -e "\n${CYAN}=========================================${NC}"
-    echo -e "${GREEN} CHOOSE PROXY ENGINE${NC}"
-    echo -e "${CYAN}=========================================${NC}"
-    echo "1) OpenResty - [Standard / Highly Reliable]"
-    echo "2) Envoy Proxy - [High Performance / Cloud Native]"
-    echo "3) HAProxy - [Ultra Low Latency / Lightweight]"
-    echo "4) Caddy Proxy - [Modern / Simple & Fast]"
-    echo "5) Sing-Box - [Lightweight / High Performance]"
-
+    local STEP="REGION"
     while true; do
-        read -p "Select Engine [1-5]: " ENGINE_CHOICE
-        case $ENGINE_CHOICE in
-            1) ENGINE="oppss"; DISPLAY_ENGINE="oppss"; echo -e "${GREEN}✅ Selected: OpenResty${NC}"; break ;;
-            2) ENGINE="enz"; DISPLAY_ENGINE="enz"; echo -e "${GREEN}✅ Selected: Envoy Proxy${NC}"; break ;;
-            3) ENGINE="hayz"; DISPLAY_ENGINE="hayz"; echo -e "${GREEN}✅ Selected: HAProxy${NC}"; break ;;
-            4) ENGINE="can"; DISPLAY_ENGINE="can"; echo -e "${GREEN}✅ Selected: Caddy Proxy${NC}"; break ;;
-            5) ENGINE="sin"; DISPLAY_ENGINE="sin"; echo -e "${GREEN}✅ Selected: Sing-Box Engine${NC}"; break ;;
-            *) echo -e "${RED}Enter 1, 2, 3, 4, or 5 only${NC}" ;;
+        case "$STEP" in
+            "REGION")
+                if ! select_region; then
+                    return 0
+                fi
+                STEP="ENGINE"
+                ;;
+            "ENGINE")
+                echo -e "\n${CYAN}=========================================${NC}"
+                echo -e "${GREEN} CHOOSE PROXY ENGINE${NC}"
+                echo -e "${CYAN}=========================================${NC}"
+                echo "1) OpenResty - [Standard / Highly Reliable]"
+                echo "2) Envoy Proxy - [High Performance / Cloud Native]"
+                echo "3) HAProxy - [Ultra Low Latency / Lightweight]"
+                echo "4) Caddy Proxy - [Modern / Simple & Fast]"
+                echo "5) Sing-Box - [Lightweight / High Performance]"
+                echo "0) Back to Region Selection"
+
+                read -p "Select Engine [0-5]: " ENGINE_CHOICE
+                case $ENGINE_CHOICE in
+                    1) ENGINE="openresty"; DISPLAY_ENGINE="OpenResty"; echo -e "${GREEN}✅ Selected: OpenResty${NC}"; STEP="RES_MODE" ;;
+                    2) ENGINE="envoy"; DISPLAY_ENGINE="Envoy Proxy"; echo -e "${GREEN}✅ Selected: Envoy Proxy${NC}"; STEP="RES_MODE" ;;
+                    3) ENGINE="haproxy"; DISPLAY_ENGINE="HAProxy"; echo -e "${GREEN}✅ Selected: HAProxy${NC}"; STEP="RES_MODE" ;;
+                    4) ENGINE="caddy"; DISPLAY_ENGINE="Caddy Proxy"; echo -e "${GREEN}✅ Selected: Caddy Proxy${NC}"; STEP="RES_MODE" ;;
+                    5) ENGINE="singbox"; DISPLAY_ENGINE="Sing-Box Engine"; echo -e "${GREEN}✅ Selected: Sing-Box Engine${NC}"; STEP="RES_MODE" ;;
+                    0) STEP="REGION" ;;
+                    *) echo -e "${RED}Enter 0, 1, 2, 3, 4, or 5 only${NC}" ;;
+                esac
+                ;;
+            "RES_MODE")
+                echo -e "\n${CYAN}=========================================${NC}"
+                echo -e "${GREEN} RESOURCE CONFIG MODE${NC}"
+                echo -e "${CYAN}=========================================${NC}"
+                echo -e "${GREEN}1) AUTO PRESETS | Recommended (Request-Based)${NC}"
+                echo -e "${YELLOW}2) MANUAL SETUP | Full Memory & vCPU Range${NC}"
+                echo -e "0) Back to Engine Selection"
+
+                read -p "Select Mode [0-2]: " RES_MODE
+                case $RES_MODE in
+                    1) STEP="AUTO_PRESET" ;;
+                    2) STEP="MANUAL_MEM" ;;
+                    0) STEP="ENGINE" ;;
+                    *) echo -e "${RED}Enter 0, 1, or 2 only${NC}" ;;
+                esac
+                ;;
+            "AUTO_PRESET")
+                echo -e "\n${CYAN}--- AUTO PRESETS ---${NC}"
+                echo "1) Basic: 512Mi RAM + 1 vCPU (Min: 0, Max: 1, Concurrency: 80)"
+                echo "2) Balanced: 1Gi RAM + 1 vCPU (Min: 0, Max: 1, Concurrency: 100) ✅"
+                echo "3) Turbo: 2Gi RAM + 2 vCPU (Min: 0, Max: 1, Concurrency: 1000)"
+                echo "0) Back to Resource Config Mode"
+
+                read -p "Choose preset [0-3]: " AUTO_CHOICE
+                case $AUTO_CHOICE in
+                    1)
+                        BILLING_MODE="request"; BILLING_FLAG="--cpu-throttling"
+                        MIN_INST=0; MAX_INST=1; TIMEOUT=1000
+                        MEMORY="512Mi"; CPU="1"; CONCURRENCY=80
+                        echo -e "${GREEN}✅ Applied Preset: $MEMORY | $CPU vCPU | Min: $MIN_INST | Max: $MAX_INST | Concurrency: $CONCURRENCY | Timeout: ${TIMEOUT}s${NC}"
+                        break 2
+                        ;;
+                    2)
+                        BILLING_MODE="request"; BILLING_FLAG="--cpu-throttling"
+                        MIN_INST=0; MAX_INST=1; TIMEOUT=1000
+                        MEMORY="1Gi"; CPU="1"; CONCURRENCY=100
+                        echo -e "${GREEN}✅ Applied Preset: $MEMORY | $CPU vCPU | Min: $MIN_INST | Max: $MAX_INST | Concurrency: $CONCURRENCY | Timeout: ${TIMEOUT}s${NC}"
+                        break 2
+                        ;;
+                    3)
+                        BILLING_MODE="request"; BILLING_FLAG="--cpu-throttling"
+                        MIN_INST=0; MAX_INST=1; TIMEOUT=1000
+                        MEMORY="2Gi"; CPU="2"; CONCURRENCY=1000
+                        echo -e "${GREEN}✅ Applied Preset: $MEMORY | $CPU vCPU | Min: $MIN_INST | Max: $MAX_INST | Concurrency: $CONCURRENCY | Timeout: ${TIMEOUT}s${NC}"
+                        break 2
+                        ;;
+                    0) STEP="RES_MODE" ;;
+                    *) echo -e "${RED}Enter 0, 1, 2, or 3 only${NC}" ;;
+                esac
+                ;;
+            "MANUAL_MEM")
+                echo -e "\n${CYAN}=========================================${NC}"
+                echo -e "${GREEN} BILLING MODE${NC}"
+                echo -e "${CYAN}=========================================${NC}"
+                echo -e "${YELLOW}Request-Based with CPU Throttling${NC}"
+                BILLING_MODE="request"
+                BILLING_FLAG="--cpu-throttling"
+
+                echo -e "\n${YELLOW}--- MANUAL SETUP: SELECT MEMORY ---${NC}"
+                echo "1) 256Mi   2) 512Mi   3) 1Gi     4) 2Gi"
+                echo "5) 4Gi     6) 8Gi     7) 16Gi    8) Custom input"
+                echo "0) Back to Resource Config Mode"
+                read -p "Select Memory [0-8]: " MEM
+                case $MEM in
+                    1) MEMORY="256Mi"; STEP="MANUAL_CPU" ;;
+                    2) MEMORY="512Mi"; STEP="MANUAL_CPU" ;;
+                    3) MEMORY="1Gi"; STEP="MANUAL_CPU" ;;
+                    4) MEMORY="2Gi"; STEP="MANUAL_CPU" ;;
+                    5) MEMORY="4Gi"; STEP="MANUAL_CPU" ;;
+                    6) MEMORY="8Gi"; STEP="MANUAL_CPU" ;;
+                    7) MEMORY="16Gi"; STEP="MANUAL_CPU" ;;
+                    8)
+                        read -p "Type custom memory (or '0' to go back): " CUSTOM_MEM
+                        if [ "$CUSTOM_MEM" = "0" ] || [ -z "$CUSTOM_MEM" ]; then
+                            STEP="MANUAL_MEM"
+                        else
+                            MEMORY="$CUSTOM_MEM"
+                            STEP="MANUAL_CPU"
+                        fi
+                        ;;
+                    0) STEP="RES_MODE" ;;
+                    *) echo -e "${RED}Enter 0-8 only${NC}" ;;
+                esac
+                ;;
+            "MANUAL_CPU")
+                echo -e "\n${YELLOW}--- MANUAL SETUP: SELECT vCPU (Memory: $MEMORY) ---${NC}"
+                echo "1) 1 vCPU   2) 2 vCPU   3) 4 vCPU   4) 8 vCPU   5) Custom input"
+                echo "0) Back to Memory Selection"
+                read -p "Select vCPU [0-5]: " CPU_SEL
+                case $CPU_SEL in
+                    1) CPU="1"; echo -e "${GREEN}✅ Selected: $MEMORY RAM | $CPU vCPU${NC}"; STEP="MANUAL_SCALING" ;;
+                    2) CPU="2"; echo -e "${GREEN}✅ Selected: $MEMORY RAM | $CPU vCPU${NC}"; STEP="MANUAL_SCALING" ;;
+                    3) CPU="4"; echo -e "${GREEN}✅ Selected: $MEMORY RAM | $CPU vCPU${NC}"; STEP="MANUAL_SCALING" ;;
+                    4) CPU="8"; echo -e "${GREEN}✅ Selected: $MEMORY RAM | $CPU vCPU${NC}"; STEP="MANUAL_SCALING" ;;
+                    5)
+                        read -p "Type custom vCPU (or '0' to go back): " CUSTOM_CPU
+                        if [ "$CUSTOM_CPU" = "0" ] || [ -z "$CUSTOM_CPU" ]; then
+                            STEP="MANUAL_CPU"
+                        else
+                            CPU="$CUSTOM_CPU"
+                            echo -e "${GREEN}✅ Selected: $MEMORY RAM | $CPU vCPU${NC}"
+                            STEP="MANUAL_SCALING"
+                        fi
+                        ;;
+                    0) STEP="MANUAL_MEM" ;;
+                    *) echo -e "${RED}Enter 0-5 only${NC}" ;;
+                esac
+                ;;
+            "MANUAL_SCALING")
+                echo -e "\n${CYAN}=========================================${NC}"
+                echo -e "${GREEN} PERFORMANCE & SCALING CONFIGURATION ${NC}"
+                echo -e "${CYAN}=========================================${NC}"
+                echo -e "${YELLOW}(Type 'b' at any prompt to go back to vCPU Selection)${NC}"
+
+                read -p "Min Instances [Default: 0]: " IN_MIN
+                if [ "${IN_MIN:-}" = "b" ] || [ "${IN_MIN:-}" = "B" ]; then STEP="MANUAL_CPU"; continue; fi
+                MIN_INST=${IN_MIN:-0}
+
+                read -p "Max Instances [Default: 1]: " IN_MAX
+                if [ "${IN_MAX:-}" = "b" ] || [ "${IN_MAX:-}" = "B" ]; then STEP="MANUAL_CPU"; continue; fi
+                MAX_INST=${IN_MAX:-1}
+
+                read -p "Concurrency / Max Connections [Default: 1000]: " IN_CONC
+                if [ "${IN_CONC:-}" = "b" ] || [ "${IN_CONC:-}" = "B" ]; then STEP="MANUAL_CPU"; continue; fi
+                CONCURRENCY=${IN_CONC:-1000}
+
+                read -p "Timeout in seconds [Default: 1000]: " IN_TOUT
+                if [ "${IN_TOUT:-}" = "b" ] || [ "${IN_TOUT:-}" = "B" ]; then STEP="MANUAL_CPU"; continue; fi
+                TIMEOUT=${IN_TOUT:-1000}
+
+                echo -e "${GREEN}✅ Config Set: Min: $MIN_INST | Max: $MAX_INST | Concurrency: $CONCURRENCY | Timeout: ${TIMEOUT}s${NC}"
+                break 2
+                ;;
         esac
     done
 
@@ -241,91 +414,10 @@ deploy_new_service() {
     RAND=$(openssl rand -hex 3)
     CLOUD_RUN_SERVICE_NAME="gcp-project-${ENGINE}-$RAND"
 
-    echo -e "\n${CYAN}=========================================${NC}"
-    echo -e "${GREEN} RESOURCE CONFIG MODE${NC}"
-    echo -e "${CYAN}=========================================${NC}"
-    echo -e "${GREEN}1) AUTO PRESETS | Recommended (Request-Based)${NC}"
-    echo -e "${YELLOW}2) MANUAL SETUP | Full Memory & vCPU Range${NC}"
-
-    while true; do
-        read -p "Select Mode [1-2]: " RES_MODE
-        case $RES_MODE in
-            1)
-                echo -e "\n${CYAN}--- AUTO PRESETS ---${NC}"
-                echo "1) Basic: 512Mi RAM + 1 vCPU (Min: 0, Max: 1, Concurrency: 80)"
-                echo "2) Balanced: 1Gi RAM + 1 vCPU (Min: 0, Max: 1, Concurrency: 100) ✅"
-                echo "3) Turbo: 2Gi RAM + 2 vCPU (Min: 0, Max: 1, Concurrency: 1000)"
-                read -p "Choose preset [1-3]: " AUTO_CHOICE
-                BILLING_MODE="request"
-                BILLING_FLAG="--cpu-throttling"
-                MIN_INST=0
-                MAX_INST=1
-                CONCURRENCY=1000
-                TIMEOUT=1000
-                case $AUTO_CHOICE in
-                    1) MEMORY="512Mi"; CPU="1" ;;
-                    2) MEMORY="1Gi"; CPU="1" ;;
-                    3) MEMORY="2Gi"; CPU="2" ;;
-                    *) MEMORY="1Gi"; CPU="1"; echo -e "${YELLOW}Using Balanced preset${NC}" ;;
-                esac
-                echo -e "${GREEN}✅ Applied Preset: $MEMORY | $CPU vCPU | Min: $MIN_INST | Max: $MAX_INST | Concurrency: $CONCURRENCY | Timeout: ${TIMEOUT}s${NC}"
-                break
-                ;;
-            2)
-                echo -e "\n${CYAN}=========================================${NC}"
-                echo -e "${GREEN} BILLING MODE${NC}"
-                echo -e "${CYAN}=========================================${NC}"
-                echo -e "${YELLOW}Request-Based with CPU Throttling${NC}"
-                BILLING_MODE="request"
-                BILLING_FLAG="--cpu-throttling"
-
-                echo -e "\n${YELLOW}--- MANUAL SETUP ---${NC}"
-                echo "Select Memory:"
-                echo "1) 256Mi 2) 512Mi 3) 1Gi 4) 2Gi"
-                echo "5) 4Gi 6) 8Gi 7) 16Gi 8) Custom input"
-                read -p "Select Memory [1-8]: " MEM
-                case $MEM in
-                    1) MEMORY="256Mi" ;;
-                    2) MEMORY="512Mi" ;;
-                    3) MEMORY="1Gi" ;;
-                    4) MEMORY="2Gi" ;;
-                    5) MEMORY="4Gi" ;;
-                    6) MEMORY="8Gi" ;;
-                    7) MEMORY="16Gi" ;;
-                    8) read -p "Type custom memory: " MEMORY ;;
-                    *) MEMORY="1Gi" ;;
-                esac
-
-                echo -e "\nSelect vCPU:"
-                echo "1) 1 vCPU 2) 2 vCPU 3) 4 vCPU 4) 8 vCPU 5) Custom input"
-                read -p "Select vCPU [1-5]: " CPU_SEL
-                case $CPU_SEL in
-                    1) CPU="1" ;;
-                    2) CPU="2" ;;
-                    3) CPU="4" ;;
-                    4) CPU="8" ;;
-                    5) read -p "Type custom vCPU: " CPU ;;
-                    *) CPU="1" ;;
-                esac
-
-                echo -e "${GREEN}✅ Custom Selected: $MEMORY RAM | $CPU vCPU${NC}"
-                echo -e "\n${CYAN}=========================================${NC}"
-                echo -e "${GREEN} PERFORMANCE & SCALING CONFIGURATION ${NC}"
-                echo -e "${CYAN}=========================================${NC}"
-                read -p "Min Instances [Default: 0]: " MIN_INST; MIN_INST=${MIN_INST:-0}
-                read -p "Max Instances [Default: 1]: " MAX_INST; MAX_INST=${MAX_INST:-1}
-                read -p "Concurrency / Max Connections [Default: 1000]: " CONCURRENCY; CONCURRENCY=${CONCURRENCY:-1000}
-                read -p "Timeout in seconds [Default: 1000]: " TIMEOUT; TIMEOUT=${TIMEOUT:-1000}
-                echo -e "${GREEN}✅ Config Set: Min: $MIN_INST | Max: $MAX_INST | Concurrency: $CONCURRENCY | Timeout: ${TIMEOUT}s${NC}"
-                break
-                ;;
-            *) echo -e "${RED}Enter 1 or 2 only${NC}" ;;
-        esac
-    done
-
+    PREV_DIR=$(pwd)
     BUILD_DIR=$(mktemp -d)
-    trap 'rm -rf "$BUILD_DIR"' EXIT
-    cd "$BUILD_DIR" || exit 1
+    trap 'cd "$PREV_DIR" 2>/dev/null || true; rm -rf "$BUILD_DIR"' RETURN
+    cd "$BUILD_DIR" || return 1
 
     touch index.html
 
@@ -421,6 +513,13 @@ http {
     keepalive_requests 200000;
     client_max_body_size 0;
 
+    # Anti-DDoS Rate Limiting Zones (Safe for WebSocket Speed)
+    limit_req_zone $binary_remote_addr zone=panel_limit:10m rate=20r/s;
+    limit_req_zone $binary_remote_addr zone=ws_limit:10m rate=50r/s;
+    limit_conn_zone $binary_remote_addr zone=conn_limit:10m;
+    limit_req_status 429;
+    limit_conn_status 429;
+
     proxy_buffering off;
     proxy_request_buffering off;
     proxy_http_version 1.1;
@@ -440,18 +539,23 @@ http {
         listen [::]:8080 default_server;
         server_name _;
 
+        limit_conn conn_limit 100;
+
         location /health {
+            limit_req zone=panel_limit burst=30 nodelay;
             return 200 "OK\n";
             add_header Content-Type text/plain;
             add_header Cache-Control "no-store, no-cache, must-revalidate";
         }
 
         location / {
+            limit_req zone=panel_limit burst=40 nodelay;
             root /usr/local/openresty/nginx/html;
             index index.html;
         }
 
         location /ayaw-kol/bata/pako-kol {
+            limit_req zone=ws_limit burst=100 nodelay;
             proxy_pass http://127.0.0.1:10001;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection $connection_upgrade;
@@ -461,6 +565,7 @@ http {
         }
 
         location /awit-angkol/con/suspended {
+            limit_req zone=ws_limit burst=100 nodelay;
             proxy_pass http://127.0.0.1:10002;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection $connection_upgrade;
@@ -511,6 +616,7 @@ static_resources:
   - name: listener_0
     address:
       socket_address: { address: 0.0.0.0, port_value: 8080 }
+    per_connection_buffer_limit_bytes: 1048576
     filter_chains:
     - filters:
       - name: envoy.filters.network.http_connection_manager
@@ -520,6 +626,9 @@ static_resources:
           server_name: "Cloudflare"
           codec_type: AUTO
           use_remote_address: true
+          common_http_protocol_options:
+            idle_timeout: 3600s
+            max_requests_per_connection: 10000
           upgrade_configs:
           - upgrade_type: "websocket"
           route_config:
@@ -537,6 +646,26 @@ static_resources:
               - match: { prefix: "/" }
                 route: { cluster: web_cluster }
           http_filters:
+          - name: envoy.filters.http.local_ratelimit
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+              stat_prefix: http_local_rate_limiter
+              token_bucket:
+                max_tokens: 100
+                tokens_per_fill: 50
+                fill_interval: 1s
+              filter_enabled:
+                runtime_key: local_rate_limit_enabled
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
+              filter_enforced:
+                runtime_key: local_rate_limit_enforced
+                default_value:
+                  numerator: 100
+                  denominator: HUNDRED
+              status:
+                code: TooManyRequests
           - name: envoy.filters.http.router
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -623,10 +752,17 @@ defaults
     timeout connect 10s
     timeout client 3600s
     timeout server 3600s
+    timeout http-request 15s
 
 frontend main
     bind 0.0.0.0:8080
     http-response set-header Server Cloudflare
+
+    # Anti-DDoS Stick-Table Rate Limiting (Safe for WS)
+    stick-table type ip size 100k expire 30s store http_req_rate(10s),conn_cur
+    http-request track-sc0 src
+    http-request deny deny_status 429 if { sc_http_req_rate(0) gt 250 }
+    http-request deny deny_status 429 if { sc_conn_cur(0) gt 100 }
     
     acl is_health path /health
     acl is_trojan_ws path_beg /ayaw-kol/bata/pako-kol
@@ -692,12 +828,24 @@ EOF
 {
     admin off
     http_port 8080
+    servers {
+        timeouts {
+            read_header 10s
+            idle 3600s
+        }
+        max_header_size 16KB
+    }
 }
 
 :8080 {
     header {
         Server "Cloudflare"
         -Server
+    }
+
+    # Anti-DDoS Request Body & Connection Protection
+    request_body {
+        max_size 10MB
     }
 
     handle /health {
@@ -765,12 +913,24 @@ EOF
 {
     admin off
     http_port 8080
+    servers {
+        timeouts {
+            read_header 10s
+            idle 3600s
+        }
+        max_header_size 16KB
+    }
 }
 
 :8080 {
     header {
         Server "Cloudflare"
         -Server
+    }
+
+    # Anti-DDoS Request Body & Connection Protection
+    request_body {
+        max_size 10MB
     }
 
     handle /health {
@@ -1016,13 +1176,13 @@ EOF
 
     gcloud builds submit --project="$PROJECT_ID" --tag "$IMAGE_TAG" . --quiet
     gcloud run services update "$CLOUD_RUN_SERVICE_NAME" --image "$IMAGE_TAG" --region "$REGION" --project="$PROJECT_ID" --quiet
+    cleanup_old_artifact_images "$REGION" "$PROJECT_ID"
 
     clear
     echo -e "\n${CYAN}=========================================${NC}"
     echo -e "${GREEN}SCRIPT DEPLOYMENT SUCCESS!"
     echo -e "${GREEN}FIVE PROXY ENGINES 2 PROTOCOLS"
     echo -e "${GREEN}TROJAN & VLESS WEBSOCKET ONLY"
-    echo -e "${GREEN}THIS SCRIPT IS NOT FOR SALE"
     echo -e "${GREEN}THIS SCRIPT IS OWNED & MADE BY CON FIG"
     echo -e "${CYAN}=========================================${NC}"
     echo -e "${GREEN}🔗 SHORT LINK (Configs Visible Directly):${NC} $CANONICAL_LINK"
@@ -1032,13 +1192,12 @@ EOF
     echo -e " Trojan-WS: ${CANONICAL_LINK}/ayaw-kol/bata/pako-kol"
     echo -e " VLESS-WS: ${CANONICAL_LINK}/awit-angkol/con/suspended"
     echo -e "${CYAN}=========================================${NC}"
-    echo -e "${GREEN}🛡️ ENHANCEMENTS APPLIED:${NC}"
+    echo -e "${GREEN}🛡️ FEATURES ACTIVE:${NC}"
     echo -e " ✅ Custom User-Agent Header Preserved"
-    echo -e " ✅ Fixed 400 Bad Request (Forwarded Host & Headers)"
-    echo -e " ✅ Domain & TLS Masking Engine (Fake Server Fingerprint)"
-    echo -e " ✅ Anti-DDoS & Container Limits Compliance"
-    echo -e " ✅ Log Cleaner & Supervisord Integration"
-    echo -e " ✅ Direct Visible Panel with Ocean Blue Theme, Real Ping & Real Uptime ✨ NEW"
+    echo -e " ✅ Artifact Registry Auto-Setup & Old Image Cleanup"
+    echo -e " ✅ Anti-DDoS Rate Limiting (All 5 Engines)"
+    echo -e " ✅ RAM Disk (tmpfs) High-Speed Mounts"
+    echo -e " ✅ Direct Ocean Blue Panel with Real Ping & Uptime"
     echo ""
 
     read -p "Press [Enter] to return to Main Menu..."
