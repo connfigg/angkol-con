@@ -226,20 +226,20 @@ deploy_new_service() {
     while true; do
         read -p "Select Engine [1-5]: " ENGINE_CHOICE
         case $ENGINE_CHOICE in
-            1) ENGINE="openresty"; DISPLAY_ENGINE="OpenResty"; echo -e "${GREEN}✅ Selected: OpenResty${NC}"; break ;;
-            2) ENGINE="envoy"; DISPLAY_ENGINE="Envoy Proxy"; echo -e "${GREEN}✅ Selected: Envoy Proxy${NC}"; break ;;
-            3) ENGINE="haproxy"; DISPLAY_ENGINE="HAProxy"; echo -e "${GREEN}✅ Selected: HAProxy${NC}"; break ;;
-            4) ENGINE="caddy"; DISPLAY_ENGINE="Caddy Proxy"; echo -e "${GREEN}✅ Selected: Caddy Proxy${NC}"; break ;;
-            5) ENGINE="singbox"; DISPLAY_ENGINE="Sing-Box Engine"; echo -e "${GREEN}✅ Selected: Sing-Box Engine${NC}"; break ;;
+            1) ENGINE="oppss"; DISPLAY_ENGINE="oppss"; echo -e "${GREEN}✅ Selected: OpenResty${NC}"; break ;;
+            2) ENGINE="enz"; DISPLAY_ENGINE="enz"; echo -e "${GREEN}✅ Selected: Envoy Proxy${NC}"; break ;;
+            3) ENGINE="hayz"; DISPLAY_ENGINE="hayz"; echo -e "${GREEN}✅ Selected: HAProxy${NC}"; break ;;
+            4) ENGINE="can"; DISPLAY_ENGINE="can"; echo -e "${GREEN}✅ Selected: Caddy Proxy${NC}"; break ;;
+            5) ENGINE="sin"; DISPLAY_ENGINE="sin"; echo -e "${GREEN}✅ Selected: Sing-Box Engine${NC}"; break ;;
             *) echo -e "${RED}Enter 1, 2, 3, 4, or 5 only${NC}" ;;
         esac
     done
 
     setup_artifact_registry "$REGION"
-    IMAGE_TAG="${ARTIFACT_REGISTRY_URL}/gcp-xray-${ENGINE}:latest"
+    IMAGE_TAG="${ARTIFACT_REGISTRY_URL}/gcp-project-${ENGINE}:latest"
 
     RAND=$(openssl rand -hex 3)
-    CLOUD_RUN_SERVICE_NAME="gcp-xray-${ENGINE}-$RAND"
+    CLOUD_RUN_SERVICE_NAME="gcp-project-${ENGINE}-$RAND"
 
     echo -e "\n${CYAN}=========================================${NC}"
     echo -e "${GREEN} RESOURCE CONFIG MODE${NC}"
