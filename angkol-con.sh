@@ -263,11 +263,11 @@ deploy_new_service() {
 
                 read -p "Select Engine [0-5]: " ENGINE_CHOICE
                 case $ENGINE_CHOICE in
-                    1) ENGINE="openresty"; DISPLAY_ENGINE="OpenResty"; echo -e "${GREEN}✅ Selected: OpenResty${NC}"; STEP="RES_MODE" ;;
-                    2) ENGINE="envoy"; DISPLAY_ENGINE="Envoy Proxy"; echo -e "${GREEN}✅ Selected: Envoy Proxy${NC}"; STEP="RES_MODE" ;;
-                    3) ENGINE="haproxy"; DISPLAY_ENGINE="HAProxy"; echo -e "${GREEN}✅ Selected: HAProxy${NC}"; STEP="RES_MODE" ;;
-                    4) ENGINE="caddy"; DISPLAY_ENGINE="Caddy Proxy"; echo -e "${GREEN}✅ Selected: Caddy Proxy${NC}"; STEP="RES_MODE" ;;
-                    5) ENGINE="singbox"; DISPLAY_ENGINE="Sing-Box Engine"; echo -e "${GREEN}✅ Selected: Sing-Box Engine${NC}"; STEP="RES_MODE" ;;
+                    1) ENGINE="opps"; DISPLAY_ENGINE="OpenResty"; echo -e "${GREEN}✅ Selected: OpenResty${NC}"; STEP="RES_MODE" ;;
+                    2) ENGINE="enxx"; DISPLAY_ENGINE="Envoy Proxy"; echo -e "${GREEN}✅ Selected: Envoy Proxy${NC}"; STEP="RES_MODE" ;;
+                    3) ENGINE="hala"; DISPLAY_ENGINE="HAProxy"; echo -e "${GREEN}✅ Selected: HAProxy${NC}"; STEP="RES_MODE" ;;
+                    4) ENGINE="cazz"; DISPLAY_ENGINE="Caddy Proxy"; echo -e "${GREEN}✅ Selected: Caddy Proxy${NC}"; STEP="RES_MODE" ;;
+                    5) ENGINE="sinx"; DISPLAY_ENGINE="Sing-Box Engine"; echo -e "${GREEN}✅ Selected: Sing-Box Engine${NC}"; STEP="RES_MODE" ;;
                     0) STEP="REGION" ;;
                     *) echo -e "${RED}Enter 0, 1, 2, 3, 4, or 5 only${NC}" ;;
                 esac
