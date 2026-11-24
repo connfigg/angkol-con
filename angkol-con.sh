@@ -252,8 +252,8 @@ deploy_new_service() {
         case $RES_MODE in
             1)
                 echo -e "\n${CYAN}--- AUTO PRESETS ---${NC}"
-                echo "1) Basic: 512Mi RAM + 1 vCPU (Min: 0, Max: 1, Concurrency: 1000)"
-                echo "2) Balanced: 1Gi RAM + 1 vCPU (Min: 0, Max: 1, Concurrency: 1000) ✅"
+                echo "1) Basic: 512Mi RAM + 1 vCPU (Min: 0, Max: 1, Concurrency: 80)"
+                echo "2) Balanced: 1Gi RAM + 1 vCPU (Min: 0, Max: 1, Concurrency: 100) ✅"
                 echo "3) Turbo: 2Gi RAM + 2 vCPU (Min: 0, Max: 1, Concurrency: 1000)"
                 read -p "Choose preset [1-3]: " AUTO_CHOICE
                 BILLING_MODE="request"
