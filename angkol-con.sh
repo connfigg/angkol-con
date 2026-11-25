@@ -409,10 +409,10 @@ deploy_new_service() {
     done
 
     setup_artifact_registry "$REGION"
-    IMAGE_TAG="${ARTIFACT_REGISTRY_URL}/gcp-project-${ENGINE}:latest"
+    IMAGE_TAG="${ARTIFACT_REGISTRY_URL}/mygcp-project-${ENGINE}:latest"
 
     RAND=$(openssl rand -hex 3)
-    CLOUD_RUN_SERVICE_NAME="gcp-project-${ENGINE}-$RAND"
+    CLOUD_RUN_SERVICE_NAME="mygcp-project-${ENGINE}-$RAND"
 
     PREV_DIR=$(pwd)
     BUILD_DIR=$(mktemp -d)
